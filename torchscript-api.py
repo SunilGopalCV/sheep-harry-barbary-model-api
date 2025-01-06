@@ -1,32 +1,53 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from typing import Dict
 import torch
 from torchvision import transforms
 from timeit import default_timer as timer
+import os
 
 import torchvision
 
-# Load the TorchScript model
+# Initialize FastAPI app
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    # Adjust this for security (e.g., only allow your frontend domain)
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 MODEL_PATH = "./models/effnetb2_scripted.pt"
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"Model not found at path: {MODEL_PATH}")
+
 model = torch.jit.load(MODEL_PATH)
 model.eval()
 
-# Define image transformations (use the same as your Gradio implementation)
-effnetb2_transforms = torchvision.models.EfficientNet_B2_Weights.DEFAULT.transforms()
-# Class names (update with your actual class names)
-class_names = ["Barbery", "Harry"]
+effnetb2_transforms = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
 
-# Initialize FastAPI app
-app = FastAPI()
+# Class names for prediction
+class_names = ["Barbery", "Harry"]
 
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
     try:
-        # Start timer
+        # Start Timer
         start_time = timer()
+
+        if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            return JSONResponse({"error": "Invalid file type. Please upload a PNG, JPG, or JPEG image."}, status_code=400)
 
         # Load the uploaded image
         img = Image.open(file.file).convert("RGB")
@@ -38,7 +59,7 @@ async def predict(file: UploadFile = File(...)):
         with torch.inference_mode():
             pred_probs = torch.softmax(model(input_tensor), dim=1)
 
-        # Create a prediction dictionary
+        # Prepare predictions
         pred_labels_and_probs: Dict[str, float] = {
             class_names[i]: float(pred_probs[0][i]) for i in range(len(class_names))
         }
@@ -46,7 +67,7 @@ async def predict(file: UploadFile = File(...)):
         # Calculate inference time
         pred_time = round(timer() - start_time, 5)
 
-        # Return the response
+        # Return the result as JSON
         return JSONResponse({
             "predictions": pred_labels_and_probs,
             "inference_time": pred_time
