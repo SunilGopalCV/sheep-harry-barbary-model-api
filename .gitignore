@@ -1,0 +1,17 @@
+# Virtual environment
+env/
+*.pyc
+__pycache__/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.sqlite3
+
+# Ignore IDE-specific files
+.vscode/
+.idea/
